@@ -5,7 +5,6 @@
 #include <set>
 #include <map>
 #include <queue>
-#include "chrono.h"
 #include "utilities.h"
 #include "itemset_utilities.h"
 #include "apriori.h"
@@ -15,33 +14,28 @@ using namespace std;
 #define c1 					2
 #define c2					2
 #define c3					1
-#define EPS					0.1
 
-double second();
-
+/**
+ * @brief computes the coverage-cost ratio of a tuple
+ * 
+ * @param database 
+ * @param transaction_index index of the transaction that contains the tuple
+ * @return double 
+ */
 double coveragecost_tuple(vector<set<Tuple*, tuple_set_comparator> > &database, int transaction_index){
 	double ratio = (double) database[transaction_index].size() / c2;
 	return ratio;
 }
 
-bool is_subset(Itemset* itemset, set<Tuple*, tuple_set_comparator> transaction, int &covered_count, int &uncovered_count){
-	for (int item : itemset->values){
-		bool found = false;
-		for (Tuple* tuple : transaction){
-			if (item == tuple->item){
-				found = true;
-				if (tuple->state == -1){
-					uncovered_count++;
-				} else {
-					covered_count++;
-				}
-			}
-		}
-		if (!found) return false;
-	}
-	return true;
-}
-
+/**
+ * @brief computes the coverage-cost ratio of the set_R with the representative candidate
+ * 
+ * @param database 
+ * @param representative 
+ * @param set_R 
+ * @param subtransactions 
+ * @return double 
+ */
 double coveragecost_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<int> representative, set<set<int> > set_R, map<set<int>, pair<int, set<int> > > &subtransactions){
 	double distance = 0;
 	int numerator = 0;
@@ -63,7 +57,6 @@ double coveragecost_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<
 				}
 			}
 		}
-		//numerator = numerator + subtransactions[itemset].first;
 		distance = distance + compute_distance(itemset, representative);
 	}
 	double denominator = c1 + c3 * distance;
@@ -71,14 +64,28 @@ double coveragecost_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<
 	return result;
 }
 
+/**
+ * @brief set the tuple as permanently uncovered
+ * 
+ * @param tuple 
+ * @param affected_traj set that will contain the indexes of the trajectories affected by the last iteration of the algorithm
+ */
 void cover_tuple(Tuple* tuple, set<int> &affected_traj){
 	tuple->state = 0;
 	affected_traj.clear();
 	affected_traj.insert(tuple->transaction_index);
 }
 
-void cover_set_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<set<int> > set_R, map<set<int>, pair<int, set<int> > > &subtransactions, set<int> &affected_traj){
-	affected_traj.clear();
+/**
+ * @brief set the tuples is set_R as covered
+ * 
+ * @param database 
+ * @param set_R 
+ * @param subtransactions 
+ * @param affected_trans set that will contain the indexes of the trajectories affected by the last iteration of the algorithm
+ */
+void cover_set_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<set<int> > set_R, map<set<int>, pair<int, set<int> > > &subtransactions, set<int> &affected_trans){
+	affected_trans.clear();
 	for (set<int> itemset : set_R){ // for every S in R
 		set<int> transaction_indexes = subtransactions[itemset].second;
 		for (int transaction_index : transaction_indexes){
@@ -86,7 +93,7 @@ void cover_set_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<set<i
 				if (tuple->state == -1){
 					if (itemset.count(tuple->item)){
 						tuple->state = 1;
-						affected_traj.insert(transaction_index);
+						affected_trans.insert(transaction_index);
 					}
 				}
 			}                              
@@ -95,6 +102,13 @@ void cover_set_R(vector<set<Tuple*, tuple_set_comparator> > &database, set<set<i
 	}
 }
 
+/**
+ * @brief computes the overlap cofficient of two sets of ints
+ * 
+ * @param I1 
+ * @param I2 
+ * @return double 
+ */
 double overlap_coefficient(set<int> I1, set<int> I2){
 	double denominator = (I1.size() <= I2.size()) ? I1.size() : I2.size();
 	set<int> intersect;
@@ -103,6 +117,15 @@ double overlap_coefficient(set<int> I1, set<int> I2){
 	return numerator/denominator;
 }
 
+/**
+ * @brief checks if the coverage-cost ratio of the representative candidate has been affected by the last iteration of the algorithm
+ * 
+ * @param candidate_repr 
+ * @param representative 
+ * @param affected_trans 
+ * @return true 
+ * @return false 
+ */
 bool representative_cost_unchanged(map<set<int>, pair<int, set<int> > > &candidate_repr, set<int> representative, set<int> affected_trans){
 	if (affected_trans.size() == 0) return false;
 	set<int> candidate_trans = candidate_repr[representative].second;
@@ -114,16 +137,20 @@ bool representative_cost_unchanged(map<set<int>, pair<int, set<int> > > &candida
 	return true;
 }
 
-bool is_involved(set<set<int> > old_tp, set<set<int> > current_tp){
-	// ONLY FOR TESTING THE UTILITY OF THIS METHOD
-	//return true;
-	//
-	
-	if (current_tp.empty()) return true;
-	for (set<int> setp : current_tp){
-		for (set<int> oldp : old_tp){
-			for (int item : setp){
-				if (oldp.count(item)){
+/**
+ * @brief checks if the set_Td contains items involved in the last iteration of the algorithm
+ * 
+ * @param old_Td 
+ * @param current_Td 
+ * @return true 
+ * @return false 
+ */
+bool is_involved(set<set<int> > old_Td, set<set<int> > current_Td){
+	if (current_Td.empty()) return true;
+	for (set<int> set_d : current_Td){
+		for (set<int> old_d : old_Td){
+			for (int item : set_d){
+				if (old_d.count(item)){
 					return true;
 				}
 			}
@@ -132,8 +159,66 @@ bool is_involved(set<set<int> > old_tp, set<set<int> > current_tp){
 	return false;
 }
 
+/**
+ * @brief computes the frequent itemsets
+ * 
+ * @param database 
+ * @param freq_itemsets 
+ * @param min_support 
+ */
+void apriori_method(vector<set<Tuple*, tuple_set_comparator> > &database, set<set<int> > &freq_itemsets, double min_support){
+	vector<ksized_counter> all_freqk;
+	cout << endl << "Starting APRIORI" << endl;
+	build_freq1(database, all_freqk, min_support, freq_itemsets);
+	ksized_counter previous_fam = all_freqk[0];
+	ksized_counter candk;
 
-void build_Tp(vector<set<Tuple*, tuple_set_comparator> > &database, set<int> representative, set<set<int> > &Tp, map<set<int>, pair<int, set<int> > > &subtransactions, int m, set<int> affected_trans, set<int> &Tp_trans_indexes){
+	while (previous_fam.counter.size() != 0){
+		generate_cand(candk, previous_fam);
+		keep_freq(database, candk, all_freqk, min_support, freq_itemsets);
+		previous_fam = all_freqk.back();
+	}
+	all_freqk.pop_back();
+	int freq_itemsets_number = 0;
+	for (int i = 0; i < all_freqk.size(); i++){
+		freq_itemsets_number += all_freqk[i].counter.size();
+	}
+}
+
+/**
+ * @brief adds to freq_itemsets the union of the itemsets that have an overlap coefficient greater that min_overlap
+ * 
+ * @param freq_itemsets 
+ * @param min_overlap 
+ */
+void add_overlaps(set<set<int> > &freq_itemsets, double min_overlap){
+	set<set<int> > temp = freq_itemsets;
+	for (set<set<int> >::iterator iter = temp.begin(); iter != temp.end(); iter++){
+		for (set<set<int> >::iterator iter2 = iter; iter2 != temp.end(); iter2++){
+			if (iter != iter2){
+				double overlap = overlap_coefficient(*iter, *iter2);
+				if (min_overlap < overlap && overlap < 1){
+					set<int> unionset;
+					union_set(iter->begin(), iter->end(), iter2->begin(), iter2->end(), unionset);
+					freq_itemsets.insert(unionset);
+				}
+			}
+		}
+	}
+}
+
+/**
+ * @brief computes the best set_Td for a given candidate
+ * 
+ * @param database 
+ * @param representative 
+ * @param Td 
+ * @param subtransactions 
+ * @param m 
+ * @param affected_trans 
+ * @param Td_trans_indexes 
+ */
+void build_Td(vector<set<Tuple*, tuple_set_comparator> > &database, set<int> representative, set<set<int> > &Td, map<set<int>, pair<int, set<int> > > &subtransactions, int m, set<int> affected_trans, set<int> &Td_trans_indexes){
 	double function = 0;
 	double gamma_min = 1.0 / (c1 + c3);
     double gamma = gamma_min;
@@ -194,13 +279,6 @@ void build_Tp(vector<set<Tuple*, tuple_set_comparator> > &database, set<int> rep
 			} else {
 				S_hat = subtransactions[element.first].first;
 			}
-
-			/*vector<int> bin_element;
-			vector<int> bin_repr;
-			int_to_bin(element.first, bin_element, 25);
-			int_to_bin(representative, bin_repr, 25);
-
-			double funct_value = S_hat - c3 * gamma * jaccard_distance_bin(bin_element, bin_repr);*/
 			double funct_value = S_hat - c3 * gamma * compute_distance(element.first, representative);
 			for (int transaction_index : element.second.second){
 				if (max_function_values[transaction_index] < funct_value){
@@ -212,9 +290,6 @@ void build_Tp(vector<set<Tuple*, tuple_set_comparator> > &database, set<int> rep
 		for (pair<int, double> element : max_function_values){
 			function = function + element.second;
 		}
-		//cout << "Learning rate: " << learning_rate << endl;
-		//cout << "Current difference from c1y (" << c1*gamma << ") and function (" << function << ") with y = " << gamma << " is: " << c1*gamma - function << endl;
-		//difference = function - c1*gamma;
 		if (first_iter){
 			starting_difference = function - c1*gamma;
 			if (starting_difference/5000 > 4){
@@ -233,28 +308,12 @@ void build_Tp(vector<set<Tuple*, tuple_set_comparator> > &database, set<int> rep
 		}
 		first_iter = false;
 	}
-	//cout << "    Difference from c1y and function is: " << c1*gamma - function << endl;
-	//set<int> Tp2;
 	for (pair<int, set<int> > element : previous_max_subtrans){
-		Tp.insert(element.second);
+		Td.insert(element.second);
 		if (previous_max_function_values[element.first] > 0){
-			Tp_trans_indexes.insert(element.first);
+			Td_trans_indexes.insert(element.first);
 		}
-
-		/*set<int> trans_indexes = subtransactions[element.second].second;
-		for (int index : trans_indexes){
-			Tp2.insert(index);
-		}*/
 	}
-	/*if (Tp2 != Tp_trans_indexes){
-		cout << endl << "DIVERSIIIIIII" << endl;
-	}*/
-	/*cout << "    set Tp is composed by: ";
-	for (set<int> setp : Tp){
-		print_itemset(Itemset(setp));
-		cout << " - ";
-	}
-	cout << endl;*/
 }
 
 int main(int argc, char* argv[]){
@@ -274,121 +333,17 @@ int main(int argc, char* argv[]){
 		add_noise(database, inst, c1, c3);
 		print_database(database);
 	} else {
-		// dataset in input
 		read_input(database, inst);
 	}
 
 	set<set<int> > freq_itemsets;
 
-	if (inst.ground_truth){
-         	freq_itemsets = ground_truth_clusters;       
-        } else {
+	apriori_method(database, freq_itemsets, 0.004);
 
-	// APRIORI
-	vector<ksized_counter> all_freqk;
-	double min_support = 0.004;
-	cout << endl << "Starting APRIORI" << endl;
-	build_freq1(database, all_freqk, min_support, freq_itemsets);
-	//cout << "Freq1 built!" << endl;
-	ksized_counter previous_fam = all_freqk[0];
-	ksized_counter candk;
-
-	while (previous_fam.counter.size() != 0){
-		//cout << "Iteration of the while " << previous_fam.k + 1 << endl;
-		generate_cand(candk, previous_fam);
-		//cout << "cand generated" << endl;
-		keep_freq(database, candk, all_freqk, min_support, freq_itemsets);
-		//cout << "freq keep" << endl;
-		previous_fam = all_freqk.back();
-	}
-	all_freqk.pop_back();
-	int freq_itemsets_number = 0;
-	for (int i = 0; i < all_freqk.size(); i++){
-		freq_itemsets_number += all_freqk[i].counter.size();
-	}
-	// APRIORI
-
-
-	/*set<set<int> > freq_itemsets;
-
-	set<int> set1;
-	set1.insert(3);
-	set1.insert(4);
-	freq_itemsets.insert(set1);
-
-	set<int> set2;
-	set2.insert(5);
-	set2.insert(4);
-	set2.insert(6);
-	freq_itemsets.insert(set2);
-	
-	set<int> set3;
-	set3.insert(7);
-	set3.insert(4);
-	set3.insert(2);
-	freq_itemsets.insert(set3);
-	
-	set<int> set4;
-	set4.insert(3);
-	set4.insert(2);
-	freq_itemsets.insert(set4);
-
-	set<int> set5;
-	set5.insert(1);
-	freq_itemsets.insert(set5);
-
-	set<int> set6;
-	set6.insert(3);
-	freq_itemsets.insert(set6);
-
-	set<int> set7;
-	set7.insert(8);
-	set7.insert(2);
-	set7.insert(1);
-	freq_itemsets.insert(set7);*/
-
-	double min_overlap = 1;
-
-	set<set<int> > temp = freq_itemsets;
-
-	//cout << "freq_itemsets size: " << freq_itemsets.size() << endl;
-	//cout << "temp size: " << temp.size() << endl;
-
-	for (set<set<int> >::iterator iter = temp.begin(); iter != temp.end(); iter++){
-		for (set<set<int> >::iterator iter2 = iter; iter2 != temp.end(); iter2++){
-			if (iter != iter2){
-				double overlap = overlap_coefficient(*iter, *iter2);
-				if (min_overlap < overlap && overlap < 1){
-					// add to freq (to a temporary one otherwise we would have some problems)
-					set<int> unionset;
-					union_set(iter->begin(), iter->end(), iter2->begin(), iter2->end(), unionset);
-					freq_itemsets.insert(unionset);
-				}
-			}
-		}
-	}
-
-	// comment this if you uncommented the line inside "build_freq1()"
-	for (set<Tuple*, tuple_set_comparator> trans : database){
-		if (trans.size() == 1){
-			set<int> singleton;
-			for (Tuple* tuple : trans){
-				singleton.insert(tuple->item);
-				freq_itemsets.insert(singleton);
-			}
-		}
-	}
-	//
-	
-	cout << "freq_itemsets size: " << freq_itemsets.size() << endl;
-	cout << "temp size: " << temp.size() << endl;
-
-	}
-
-	double intermediate = second();
-	cout << endl << (intermediate - start) << " seconds to create the database of size " << database.size() << endl << endl;
+	add_overlaps(freq_itemsets, 1);
 
 	priority_queue<Tuple*, vector<Tuple*>, tuple_priority_comparator> possibleTuples;
+
 	map<set<int>, pair<int, set<int> > > subtransactions; // (subtransaction, set of transaction ids)
 
 	for (int i = 0; i < database.size(); i++){
@@ -400,237 +355,98 @@ int main(int argc, char* argv[]){
 			j++;
 		}
 	}
-	
-	cout << "Number of Subtransactions: " << subtransactions.size() << endl;
 
 	map<set<int>, pair<int, set<int> > > candidate_repr; // representative : (id, transaction indexes)
-	map<int, pair<double, set<set<int> > > > candidate_repr_tp; // id : (cost, Tp)
+	map<int, pair<double, set<set<int> > > > candidate_repr_Td; // id : (cost, Tp)
 
 	int id = 0;
 	for (set<int> itemset : freq_itemsets){
 		candidate_repr[itemset].first = id;
-		candidate_repr_tp[id].first = -1;
+		candidate_repr_Td[id].first = -1;
 		id++;
 	}
 
-	cout << "Candidate Representatives size: " << candidate_repr.size() << endl;
-	
-	/*map<int, set<set<int> > > subtransactions2; // (transaction_id, set of subtransactions)
-
-	for (int i = 0; i < database.size(); i++){
-		int j = 0;
-		for (Tuple* item : database[i]){
-			addSubtransactions2(database[i], i, database[i].size(), j, subtransactions2);
-			item->ratio = coveragecost_tuple(database, i);
-			possibleTuples.push(item);
-			j++;
-		}
-	}*/
-
-	double end = second();
-
-	cout << endl << (end - intermediate) << " seconds to create the subtransactions" << endl;
-
-	set<int> affected_traj;
+	set<int> affected_trans;
 	
 	vector<set<int> > representatives_result;
-	int w = 0;
 
 	double distance_for_objfunct = 0.0;
 	double total_cost = 0;
-	set<set<int> > last_tp;
+	set<set<int> > last_Td;
 	while(possibleTuples.size() > 0 && (second() - start) < inst.timelimit){
 		if (possibleTuples.top()->state != -1){
 			possibleTuples.pop();
 		} else {
-			w++;
 			double max_cost = 0;
-			set<set<int> > optimal_set_Tp;
+			set<set<int> > optimal_set_Td;
 			set<int> optimal_representative;
 			int analyzed_repr = 0;
 			bool firstiter_of_batch = true;
-			set<int> affected_trans_forTp = affected_traj;
+			set<int> affected_trans_forTd = affected_trans;
 			for (set<int> itemset : freq_itemsets){ // for each representative
 				if (itemset.size() < 2) continue;
 				analyzed_repr++;
 				double batch_start = second();
-				/*cout << endl << endl << "Iteration " << w << " analyzing the representative number " << analyzed_repr << " ";
-				print_itemset(Itemset(itemset));
-				cout << endl << endl;*/
-				set<set<int> > set_Tp;
+				set<set<int> > set_Td;
 				if (!firstiter_of_batch){
-					affected_trans_forTp.clear();
-					affected_trans_forTp.insert(-1);
+					affected_trans_forTd.clear();
+					affected_trans_forTd.insert(-1);
 				}
 				double cost = 0;
-				if (representative_cost_unchanged(candidate_repr, itemset, affected_traj)){
-					/*cout << "cost unchanged of ";
-					print_itemset(Itemset(itemset));
-					cout << " since ";
-					print_itemset(Itemset(candidate_repr[itemset].second));
-					cout << endl;*/
+				if (representative_cost_unchanged(candidate_repr, itemset, affected_trans)){
 					int id = candidate_repr[itemset].first;
-					cost = candidate_repr_tp[id].first;
-					set_Tp = candidate_repr_tp[id].second;
+					cost = candidate_repr_Td[id].first;
+					set_Td = candidate_repr_Td[id].second;
 				} else {
 					int id = candidate_repr[itemset].first;
-					set<set<int> > current_tp = candidate_repr_tp[id].second;
+					set<set<int> > current_Td = candidate_repr_Td[id].second;
 
-					if (is_involved(last_tp, current_tp)){
-						/*print_itemset(Itemset(itemset));
-						cout << " involved since indexes: ";
-						print_itemset(Itemset(candidate_repr[itemset].second));
-						cout << endl;*/
-						set<int> Tp_trans_indexes;
-						build_Tp(database, itemset, set_Tp, subtransactions, inst.m, affected_trans_forTp, Tp_trans_indexes); // create the correspondent Tp
-						cost = coveragecost_R(database, itemset, set_Tp, subtransactions); 
+					if (is_involved(last_Td, current_Td)){
+						set<int> Td_trans_indexes;
+						build_Td(database, itemset, set_Td, subtransactions, inst.m, affected_trans_forTd, Td_trans_indexes); // create the correspondent Tp
+						cost = coveragecost_R(database, itemset, set_Td, subtransactions); 
 						int id = candidate_repr[itemset].first;
-						candidate_repr_tp[id].first = cost;
-						candidate_repr_tp[id].second = set_Tp;
-						candidate_repr[itemset].second = Tp_trans_indexes;
-
+						candidate_repr_Td[id].first = cost;
+						candidate_repr_Td[id].second = set_Td;
+						candidate_repr[itemset].second = Td_trans_indexes;
 					} else {
-						/*print_itemset(Itemset(itemset));
-						cout << "not involved since ";
-						print_itemset(Itemset(candidate_repr[itemset].second));
-						cout << endl;*/
 						int id = candidate_repr[itemset].first;
-						cost = candidate_repr_tp[id].first;
-						set_Tp = candidate_repr_tp[id].second;
+						cost = candidate_repr_Td[id].first;
+						set_Td = candidate_repr_Td[id].second;
 					}
 				}
-
 				if (cost > max_cost){ // find the max value and store the correspondent terms
 					max_cost = cost;
 					optimal_representative = itemset;
-					optimal_set_Tp = set_Tp;
+					optimal_set_Td = set_Td;
 				}
 				firstiter_of_batch = false;
-				//cout << "The processing of the iteration " << analyzed_repr << " took: " << second() - batch_start << " seconds" << endl;
 			}
-			if (max_cost != 0){ // if at least a value is found. TODO: add else statement and also the checks for a empty priority_queue
-				if (max_cost >= possibleTuples.top()->ratio){
-					total_cost += max_cost;
-					
-					for (set<int> subt : optimal_set_Tp){
-						distance_for_objfunct += jaccard_distance(optimal_representative, subt);
-					}
 
-					cover_set_R(database, optimal_set_Tp, subtransactions, affected_traj); // set as covered the correspondent items
-					cout << endl << "cover_set_R of ratio = " << max_cost << " with representative: ";
-					print_itemset(Itemset(optimal_representative));
-					cout << " covering " << optimal_set_Tp.size() << " subtransactions" << endl;
-					cout << "these subtransactions are:" << endl;
-					for (set<int> R : optimal_set_Tp){
-						print_itemset(Itemset(R));
-						cout << endl;
-					}
-					cout << "of indexes ";
-					print_itemset(Itemset(candidate_repr[optimal_representative].second));
-					cout << endl;
-					cout << "affected transactions: ";
-					print_itemset(Itemset(affected_traj));
-					cout << endl;
-					// add optimal_representative to the final result set
-					representatives_result.push_back(optimal_representative);
-					last_tp.clear();
-					last_tp = optimal_set_Tp;
-					// update costs if you don't want to compute all of them in every iteration from scratch
-				} else {
-					last_tp.clear();
-					set<int> set_item;
-					set_item.insert(possibleTuples.top()->item);
-					last_tp.insert(set_item);
-					total_cost += possibleTuples.top()->ratio;
-					Tuple* chosen_tuple = possibleTuples.top();
-					cout << "max_cost != 0 and chosen tuple: item = " << chosen_tuple->item << "  trans_index = " << chosen_tuple->transaction_index << "  state = " << chosen_tuple->state << "  ratio = " << chosen_tuple->ratio << endl;
-					cover_tuple(chosen_tuple, affected_traj); // set as uncovered the best tuple
-					possibleTuples.pop();
-					// update costs if you don't want to compute all of them in every iteration from scratch
+			if (max_cost >= possibleTuples.top()->ratio){
+				total_cost += max_cost;
+					
+				for (set<int> subt : optimal_set_Td){
+					distance_for_objfunct += jaccard_distance(optimal_representative, subt);
 				}
+
+				cover_set_R(database, optimal_set_Td, subtransactions, affected_trans); // set as covered the correspondent items
+				// add optimal_representative to the final result set
+				representatives_result.push_back(optimal_representative);
+				last_Td.clear();
+				last_Td = optimal_set_Td;
 			} else {
-				last_tp.clear();
+				last_Td.clear();
 				set<int> set_item;
 				set_item.insert(possibleTuples.top()->item);
-				last_tp.insert(set_item);
+				last_Td.insert(set_item);
 				total_cost += possibleTuples.top()->ratio;
 				Tuple* chosen_tuple = possibleTuples.top();
-				cout << "max_cost == 0 and chosen tuple: item = " << chosen_tuple->item << "  trans_index = " << chosen_tuple->transaction_index << "  state = " << chosen_tuple->state << "  ratio = " << chosen_tuple->ratio << endl;
-				cover_tuple(chosen_tuple, affected_traj); // set as uncovered the best tuple
+				cover_tuple(chosen_tuple, affected_trans); // set as uncovered the best tuple
 				possibleTuples.pop();
 			}
 		}
 	}
-	
-	cout << (second() - end) << " seconds to cover all" << endl;
-
-	cout << endl << "Total cost of the solution is: " << total_cost << endl;
-
-	/*vector<int> transactions;
-	vector<int> categories;
-	map<int, int> map1;
-	
-
-	for (int cat : categories){
-		map1[cat] = 0;
-		for (int trans : transactions){
-			if (trans.category() == cat){
-				double startms = start.getTime();
-				double endms = end.getTime();
-				String time;
-				String[] arraygiorno = time.split('T')[0].split('-');
-				String[] arrayora = time.split('T')[1].split(':');
-				if (trans.time().isright()){
-					int value = map1[cat] + trans.amount();
-					map1[cat] = value;
-				}
-			}
-		}
-	}*/
-	
-	cout << "W: " << w << endl;
-
-	cout << "possibleTuples size: " << possibleTuples.size() << endl;
-
-	cout << endl << "representatives_result size: " << representatives_result.size() << endl << endl;
-	cout << "representatives list: " << endl;
-	for (int i = 0; i < representatives_result.size(); i++){
-		print_itemset(Itemset(representatives_result[i]));
-		/*cout << " cover subtrans of trans indexes ";
-		set<int> trans_indexes = candidate_repr[representatives_result[i]].second;
-		print_itemset(Itemset(trans_indexes));*/
-		cout << endl;
-	}
-	cout << endl;
-
-	cout << "Transactions size: " << database.size() << endl << endl;
-
-	double second_term = 0.0;
-	for (int i = 0; i < database.size(); i++){
-		double count = 0.0;
-		for (Tuple* tuple : database[i]){
-			if (tuple->state == 0){
-				count += 1.0;
-			}
-		}
-		second_term += count / (double) database[i].size();
-	}
-
-	vector<set<int> > final_repr_result = representatives_result;
-
-	for (int i = 0; i < representatives_result.size(); i++){
-		for (int j = i+1; j < representatives_result.size(); j++){
-			if (representatives_result[i] == representatives_result[j]){
-				final_repr_result.erase(final_repr_result.begin() + i);
-			}
-		}
-	}
-
-	cout << "Final representatives size: " << final_repr_result.size() << endl << endl;
-
-	double final_obj_funct = c1 * final_repr_result.size() + c2 * second_term + c3 * distance_for_objfunct;
-
-	cout << "Final objective function value: " << final_obj_funct << endl << endl;
 
 	free_memory(database);
 

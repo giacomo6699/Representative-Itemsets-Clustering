@@ -6,6 +6,7 @@
 
 using namespace std;
 
+
 int build_freq1(vector<set<Tuple*, tuple_set_comparator> > &database, vector<ksized_counter> &all_freqk, double min_support, set<set<int> > &freq_itemsets){
     ksized_counter cand1(1);
     int items_number = 0;
@@ -85,7 +86,6 @@ void generate_cand(ksized_counter &new_cands, ksized_counter &old_cands){
     }
 }
 
-// counts how many itemsets of size k are in a set of size d, that is (d k)
 int select_counting_algorithm(int d, int k){ // 
 	if(k==1)
 		return d;
@@ -96,7 +96,6 @@ int select_counting_algorithm(int d, int k){ //
 	return select_counting_algorithm(d-1,k) + select_counting_algorithm(d-1,k-1);
 }
 
-// counts how many itemsets of size k are in a set of size d, that is (d k)
 int factorial(int n)
 {
     if (n == 0 || n == 1)

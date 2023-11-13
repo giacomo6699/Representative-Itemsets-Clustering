@@ -1,6 +1,5 @@
 #include "utilities.h"
 #include "itemset_utilities.h"
-#include "chrono.h"
 #include <string>
 #include <set>
 #include <map>
@@ -8,6 +7,54 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+
+#include <time.h>
+#include <time.h>
+#include <time.h>
+#include <stdlib.h>
+
+#ifdef _WIN32
+
+double second()
+{
+	return ((double)clock()/(double)CLK_TCK);
+}
+
+#else 
+
+#include <sys/resource.h>
+
+#if defined(__MACH__) && defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#endif
+	
+double myWallTime()
+{
+#ifdef __APPLE__
+	static double timeConvert = 0.0;
+	if ( timeConvert == 0.0 )
+	{
+		mach_timebase_info_data_t timeBase;
+		mach_timebase_info(&timeBase);
+		timeConvert = (double)timeBase.numer / (double)timeBase.denom / 1000000000.0;
+	}
+	return mach_absolute_time() * timeConvert;
+#else
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (double)ts.tv_sec + 1.0e-9*((double)ts.tv_nsec);
+#endif // __APPLE__
+}
+
+double second()
+{
+	double t = myWallTime();
+	return(t);
+}
+
+#endif
+
 using namespace std;
 
 void parse_command_line(int argc, char** argv, instance &inst) 
@@ -113,56 +160,6 @@ void tokenize(string const &str, const char delim, vector<string> &out)
         out.push_back(s); 
     } 
 }
- 
-// The main function that prints all
-// combinations of size r in arr[]
-// of size n. This function mainly
-// uses combinationUtil()
-void addCombination(int arr[], int n, int r, set<Itemset*, itemset_set_comparator> &possibleitemsets)
-{
-    // A temporary array to store
-    // all combination one by one
-    int data[r];
- 
-    // Print all combination using
-    // temporary array 'data[]'
-    combinationUtil(arr, n, r, 0, data, 0, possibleitemsets);
-}
-
-/* arr[] ---> Input Array
-n ---> Size of input array
-r ---> Size of a combination to be printed
-index ---> Current index in data[]
-data[] ---> Temporary array to store current combination
-i ---> index of current element in arr[] */
-void combinationUtil(int arr[], int n, int r, int index, int data[], int i, set<Itemset*, itemset_set_comparator> &possibleitemsets)
-{
-    // Current combination is ready, print it
-    if (index == r)
-    {
-		Itemset *itemset = new Itemset();
-        for (int j = 0; j < r; j++){
-			//cout << data[j];
-			itemset->values.insert(data[j]);
-		}
-		possibleitemsets.insert(itemset);
-        return;
-    }
-
-    // When no more elements are there to put in data[]
-    if (i >= n)
-        return;
- 
-    // current is included, put next at next location
-    data[index] = arr[i];
-    combinationUtil(arr, n, r, index + 1, data, i + 1, possibleitemsets);
- 
-    // current is excluded, replace it with next (Note that
-    // i+1 is passed, but index is not changed)
-    combinationUtil(arr, n, r, index, data, i + 1, possibleitemsets);
-}
-
-
 
 void addSubtransactions(set<Tuple*, tuple_set_comparator> transaction, int transaction_index, int n, int r, map<set<int>, pair<int, set<int> > > &subtransactions)
 {
@@ -209,59 +206,15 @@ void subtransactionUtil(int arr[], int n, int r, int index, int data[], int i, m
     subtransactionUtil(arr, n, r, index, data, i + 1, subtransactions, transaction_index);
 }
 
-void addSubtransactions2(set<Tuple*, tuple_set_comparator> transaction, int transaction_index, int n, int r, map<int, set<set<int> > > &subtransactions)
-{
-    // A temporary array to store
-    // all combination one by one
-    int data[r];
-	int arr[transaction.size()];
-	int i = 0;
-	for (Tuple* item : transaction){
-		arr[i] = item->item;
-		i++;
-	}
- 
-    // Print all combination using
-    // temporary array 'data[]'
-    subtransactionUtil2(arr, n, r, 0, data, 0, subtransactions, transaction_index);
-}
-
-void subtransactionUtil2(int arr[], int n, int r, int index, int data[], int i, map<int, set<set<int> > > &subtransactions, int transaction_index)
-{
-    // Current combination is ready, print it
-    if (index == r)
-    {
-		set<int> itemset;
-        for (int j = 0; j < r; j++){
-			//cout << data[j];
-			itemset.insert(data[j]);
-		}
-		subtransactions[transaction_index].insert(itemset);
-        return;
-    }
-
-    // When no more elements are there to put in data[]
-    if (i >= n)
-        return;
- 
-    // current is included, put next at next location
-    data[index] = arr[i];
-    subtransactionUtil2(arr, n, r, index + 1, data, i + 1, subtransactions, transaction_index);
- 
-    // current is excluded, replace it with next (Note that
-    // i+1 is passed, but index is not changed)
-    subtransactionUtil2(arr, n, r, index, data, i + 1, subtransactions, transaction_index);
-}
-
 void print_error(string err) {
     cout << "ERROR: " << err << endl; fflush(NULL); exit(1);
 }  
 
-void print_itemset(Itemset itemset){
+void print_itemset(set<int> itemset){
 	cout << "[";
 	int i = 0;
-	for (int item : itemset.values){
-		if (i == itemset.values.size() - 1)
+	for (int item : itemset){
+		if (i == itemset.size() - 1)
 			cout << item;
 		else 
 			cout << item << ", ";
@@ -287,80 +240,6 @@ void print_database(vector<set<Tuple*, tuple_set_comparator> > database){
 
 double random01() { 
 	return ((double) rand() / RAND_MAX); 
-}
-
-int bin_to_int(vector<int> binary_trans, set<Tuple*, tuple_set_comparator> &int_trans, int trans_index){
-    for (int i = 0; i < binary_trans.size(); i++){
-        if (binary_trans[i] == 1){
-            Tuple* tuple = new Tuple(trans_index, i);
-            int_trans.insert(tuple);
-        }
-    }
-    return int_trans.size();
-}
-
-void int_to_bin(set<Tuple*, tuple_set_comparator> int_trans, vector<int> &binary_trans, int max_syntrans_size){
-    for (int i = 0; i < max_syntrans_size; i++){
-        binary_trans.push_back(0);
-    }
-    for (Tuple* tuple : int_trans){
-        binary_trans[tuple->item] = 1;
-    }
-}
-
-void int_to_bin(set<int> int_trans, vector<int> &binary_trans, int max_syntrans_size){
-    for (int i = 0; i < max_syntrans_size; i++){
-        binary_trans.push_back(0);
-    }
-    for (int item : int_trans){
-        binary_trans[item] = 1;
-    }
-}
-
-double compute_distance(set<int> itemset1, set<int> itemset2){
-    return jaccard_distance(itemset1, itemset2);
-}
-
-double hamming_distance(set<int> itemset1, set<int> itemset2){
-	// union - intersection
-	set<int> intersect;
-	intersection_set(itemset1, itemset2, intersect);
-	double distance = itemset1.size() + itemset2.size() - 2 * intersect.size();
-	return distance;
-}
-
-double hamming_distance(vector<int> itemset1, vector<int> itemset2){
-	double distance = 0;
-	for (int index = 0; index < itemset1.size(); index++){
-		if (itemset1[index] != itemset2[index]){
-			distance += 1.0;
-		}
-	}
-	return distance;
-}
-
-double jaccard_distance(set<int> itemset1, set<int> itemset2){
-	set<int> intersect;
-	intersection_set(itemset1, itemset2, intersect);
-	double similarity = (double) intersect.size() / (itemset1.size() + itemset2.size() - intersect.size());
-	double distance = 1.0 - similarity;
-	return distance;
-}
-
-double jaccard_distance_bin(vector<int> itemset1, vector<int> itemset2){
-    double intersection_size = 0.0;
-    double union_size = 0.0;
-    for (int i = 0; i < itemset1.size(); i++){
-        if (itemset1[i] == 1 && itemset2[i] == 1){
-            intersection_size += 1.0;
-            union_size += 1.0;
-        } else if (itemset1[i] == 1 || itemset2[i] == 1){
-            union_size += 1.0;
-        }
-    }
-	double similarity = (double) intersection_size / union_size;
-	double distance = 1.0 - similarity;
-	return distance;
 }
 
 void create_database(vector<set<Tuple*, tuple_set_comparator> > &database, instance &inst, set<set<int> > &ground_truth_clusters){
